@@ -87,7 +87,7 @@ class AdbEventRecorder(object):
         while adb.poll() is None:
             try:
                 millis = int(round(time.time() * 1000))
-                line = adb.stdout.readline().decode('utf-8', 'replace').strip()
+                line = adb.stdout.readline().decode('utf-8', 'ignore').strip()
                 if len(line) != 0:
                     dlog("{} {}".format(millis, line))
             except KeyboardInterrupt:
@@ -95,7 +95,7 @@ class AdbEventRecorder(object):
             if len(line) == 0:
                 break
 
-    def record(self, fpath, eventNum=None):
+    def record(self, fpath, eventFilter=None):
         ilog('Start recording')
         record_command = self.adb_shell_command + [b'getevent']
         adb = subprocess.Popen(record_command,
@@ -106,13 +106,20 @@ class AdbEventRecorder(object):
         while adb.poll() is None:
             try:
                 millis = int(round(time.time() * 1000))
-                line = adb.stdout.readline().decode('utf-8', 'replace').strip()
+                line = adb.stdout.readline().decode('utf-8', 'ignore').strip()
                 match = EVENT_LINE_RE.match(line.strip())
                 if match is not None:
                     dev, etype, ecode, data = match.groups()
-                    ## Filter event
-                    if eventNum is not None and '/dev/input/event%s' % (eventNum) != dev:
-                        continue
+                    ## Filter events
+                    ignoreThisEvent = True
+                    if eventFilter is not None:
+                        for event in eventFilter:
+                            str_ref = '/dev/input/event%s' % (event)
+                            if str_ref == dev:
+                                ignoreThisEvent = False
+                                break
+                        if ignoreThisEvent == True:
+                            continue
                     ## Write to the file
                     etype, ecode, data = int(etype, 16), int(ecode, 16), int(data, 16)
                     rline = "%s %s %s %s %s\n" % (millis, dev, etype, ecode, data)
@@ -162,8 +169,8 @@ def main(*args):
                         help='Repeat to play the events.')
     parser.add_argument('--show', action='store_true',
                         help='Show all of the events from the device')
-    parser.add_argument('-n', '--event', type=str,
-                        help='The event number, n, to record /dev/input/event[n]')
+    parser.add_argument('-n', '--event', type=str, nargs='+',
+                        help='The event number(s), n, to record /dev/input/event[n]')
     parser.add_argument('-r', '--record', type=str,
                         help='Store the record data to the file')
     parser.add_argument('-p', '--play', type=str,
